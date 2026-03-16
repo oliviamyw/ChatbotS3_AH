@@ -142,44 +142,49 @@ ISSUE_TO_HINT = {
 # -------------------------
 @st.cache_resource(show_spinner=False)
 def build_vectorstore(data_dir: Path) -> Optional[Chroma]:
-    if not data_dir.exists():
+    try:
+        if not data_dir.exists():
+            return None
+
+        loader = DirectoryLoader(
+            str(data_dir),
+            glob="**/*.txt",
+            loader_cls=TextLoader,
+            loader_kwargs={"autodetect_encoding": True},
+            show_progress=False,
+        )
+
+        docs = loader.load()
+
+        if not docs:
+            return None
+
+        for d in docs:
+            src = d.metadata.get("source", "")
+            d.metadata["filename"] = os.path.basename(src)
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=900,
+            chunk_overlap=120,
+        )
+        chunks = splitter.split_documents(docs)
+
+        embeddings = OpenAIEmbeddings(
+            model=MODEL_EMBED,
+            openai_api_key=API_KEY,
+        )
+
+        vectordb = Chroma.from_documents(
+            documents=chunks,
+            embedding=embeddings,
+            collection_name="styleloom_study3_visualpresent_highautonomy",
+        )
+
+        return vectordb
+
+    except Exception as e:
+        st.warning(f"Vectorstore could not be built: {e}")
         return None
-
-    loader = DirectoryLoader(
-        str(data_dir),
-        glob="**/*.txt",
-        loader_cls=TextLoader,
-        loader_kwargs={"autodetect_encoding": True},
-        show_progress=False,
-    )
-
-    docs = loader.load()
-
-    if not docs:
-        return None
-
-    for d in docs:
-        src = d.metadata.get("source", "")
-        d.metadata["filename"] = os.path.basename(src)
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=900,
-        chunk_overlap=120,
-    )
-    chunks = splitter.split_documents(docs)
-
-    embeddings = OpenAIEmbeddings(
-        model=MODEL_EMBED,
-        openai_api_key=API_KEY,
-    )
-
-    vectordb = Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        collection_name="styleloom_study3_visualpresent_highautonomy",
-    )
-
-    return vectordb
 
 
 vectorstore = build_vectorstore(DATA_DIR)
