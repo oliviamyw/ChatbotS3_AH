@@ -1,29 +1,23 @@
 # =========================
-# Style Loom Chatbot Experiment (STUDY 3 - VISUAL PRESENT × HIGH AUTONOMY)
-# Visual cue fixed (name + image present)
-# Autonomy condition fixed (HIGH AUTONOMY)
-# KB-grounded answers via LangChain over ./data/*.txt
-#
-# Folder requirement:
-#   ./data/  (txt knowledge files)
-#
-# Streamlit Secrets required:
-#   OPENAI_API_KEY
-#   SUPABASE_URL
-#   SUPABASE_ANON_KEY
-#
-# Supabase table used:
-#   public.sessions
-#   (kept similar to Study 2 structure)
+# Style Loom Chatbot Experiment
+# STUDY 3 - VISUAL PRESENT × HIGH AUTONOMY
 # =========================
 
 import os
 import re
+import sys
 import uuid
 import json
 import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple
+
+# chromadb on Streamlit Cloud
+try:
+    __import__("pysqlite3")
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except Exception:
+    pass
 
 import streamlit as st
 from openai import OpenAI
@@ -64,6 +58,7 @@ API_KEY = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
 if not API_KEY:
     st.error("OPENAI_API_KEY is not set.")
     st.stop()
+
 client = OpenAI(api_key=API_KEY)
 
 
@@ -72,19 +67,22 @@ client = OpenAI(api_key=API_KEY)
 # -------------------------
 SUPA_URL = st.secrets.get("SUPABASE_URL", None)
 SUPA_KEY = st.secrets.get("SUPABASE_ANON_KEY", None)
+
 if not SUPA_URL or not SUPA_KEY:
-    st.error("Supabase credentials are missing.")
+    st.error("Supabase credentials are missing. Please set SUPABASE_URL and SUPABASE_ANON_KEY in Streamlit secrets.")
     st.stop()
+
 
 @st.cache_resource(show_spinner=False)
 def get_supabase():
     return create_client(SUPA_URL, SUPA_KEY)
 
+
 supabase = get_supabase()
 
 
 # -------------------------
-# Study 3 cell condition (THIS FILE)
+# Study 3 cell condition
 # -------------------------
 identity_option = "With name and image"
 show_name = True
@@ -108,6 +106,7 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
+
 if show_picture:
     try:
         st.image(CHATBOT_PICTURE, width=84)
@@ -116,7 +115,7 @@ if show_picture:
 
 
 # -------------------------
-# Issue dropdown
+# Issues
 # -------------------------
 ISSUES = [
     "— Select an issue —",
@@ -129,18 +128,18 @@ ISSUES = [
 ]
 
 ISSUE_TO_HINT = {
-    "Wrong item received": "wrong item received order mismatch exchange replacement refund",
-    "Delivery delay": "delivery delay shipping issue expected delivery window delayed shipment status tracking",
+    "Wrong item received": "wrong item received order mismatch refund replacement",
+    "Delivery delay": "delivery delay shipping issue delayed shipment expected delivery tracking",
     "Damaged or defective item": "damaged defective item refund replacement product issue",
-    "Return or refund issue": "return refund process friction return request refund status policy",
-    "Payment issue": "payment issue checkout declined payment order not confirmed transaction status",
+    "Return or refund issue": "return refund process friction return request refund status",
+    "Payment issue": "payment issue payment declined checkout error order not confirmed payment status",
     "Order cancellation": "order cancellation cancel order before shipment order status",
     "— Select an issue —": "",
 }
 
 
 # -------------------------
-# Knowledge base loader
+# Load vectorstore from ./data/*.txt
 # -------------------------
 @st.cache_resource(show_spinner=False)
 def build_vectorstore(data_dir: Path) -> Optional[Chroma]:
@@ -154,6 +153,7 @@ def build_vectorstore(data_dir: Path) -> Optional[Chroma]:
         loader_kwargs={"autodetect_encoding": True},
         show_progress=False,
     )
+
     docs = loader.load()
 
     if not docs:
@@ -163,16 +163,25 @@ def build_vectorstore(data_dir: Path) -> Optional[Chroma]:
         src = d.metadata.get("source", "")
         d.metadata["filename"] = os.path.basename(src)
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=120)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=900,
+        chunk_overlap=120,
+    )
     chunks = splitter.split_documents(docs)
 
-    embeddings = OpenAIEmbeddings(model=MODEL_EMBED, openai_api_key=API_KEY)
+    embeddings = OpenAIEmbeddings(
+        model=MODEL_EMBED,
+        openai_api_key=API_KEY,
+    )
 
-    return Chroma.from_documents(
+    vectordb = Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
-        collection_name="styleloom_study3_kb",
+        collection_name="styleloom_study3_visualpresent_highautonomy",
     )
+
+    return vectordb
+
 
 vectorstore = build_vectorstore(DATA_DIR)
 
@@ -184,17 +193,21 @@ def retrieve_context(query: str, k: int = 8, min_score: float = 0.20) -> str:
     try:
         hits = vectorstore.similarity_search_with_relevance_scores(query, k=k)
         filtered = [(d, s) for (d, s) in hits if s is not None and s >= min_score]
+
         if not filtered:
             return ""
+
         blocks = []
         for i, (d, s) in enumerate(filtered, 1):
             fn = d.metadata.get("filename", "unknown")
             blocks.append(f"[Doc{i} score={s:.2f} file={fn}]\n{d.page_content.strip()}")
         return "\n\n".join(blocks)
+
     except Exception:
         hits = vectorstore.similarity_search(query, k=k)
         if not hits:
             return ""
+
         blocks = []
         for i, d in enumerate(hits, 1):
             fn = d.metadata.get("filename", "unknown")
@@ -212,15 +225,17 @@ def load_all_txt_as_fallback() -> str:
             content = fp.read_text(encoding="utf-8", errors="ignore").strip()
         except Exception:
             content = ""
+
         if content:
             blocks.append(f"[FILE: {fp.name}]\n{content}")
+
     return "\n\n".join(blocks)
 
 
 # -------------------------
 # LLM helpers
 # -------------------------
-def llm_chat(messages: List[dict], temperature: float = 0.3) -> str:
+def llm_chat(messages: List[dict], temperature: float = 0.2) -> str:
     resp = client.chat.completions.create(
         model=MODEL_CHAT,
         messages=messages,
@@ -232,6 +247,7 @@ def llm_chat(messages: List[dict], temperature: float = 0.3) -> str:
 def format_recent_history(chat_history: List[Tuple[str, str]], limit: int = 6) -> str:
     if not chat_history:
         return ""
+
     turns = chat_history[-limit:]
     lines = []
     for spk, msg in turns:
@@ -243,20 +259,22 @@ def format_recent_history(chat_history: List[Tuple[str, str]], limit: int = 6) -
 def extract_last_question(text_block: str) -> Optional[str]:
     if not text_block:
         return None
+
     txt = re.sub(r"\s+", " ", text_block).strip()
     if "?" not in txt:
         return None
+
     parts = re.split(r"(?<=[\?])\s+", txt)
     qs = [p.strip() for p in parts if p.strip().endswith("?")]
     return qs[-1] if qs else None
 
 
-def answer_fallback(user_text: str) -> str:
+def answer_fallback() -> str:
     return "I can help with that. Could you briefly describe what happened and what kind of help you want with this issue?"
 
 
 # -------------------------
-# High-autonomy grounded answer
+# High-autonomy response generation
 # -------------------------
 def answer_grounded(
     user_text: str,
@@ -269,8 +287,9 @@ def answer_grounded(
     system = f"""
 You are {CHATBOT_NAME}, Style Loom's virtual assistant in a controlled customer-service study.
 
-This specific condition is HIGH AUTONOMY.
-Describe your actions as if you are the acting decision-maker or reviewer.
+This condition is HIGH AUTONOMY.
+Describe actions as if you are the acting reviewer or decision-maker.
+
 Use expressions such as:
 - I checked
 - I reviewed
@@ -284,18 +303,17 @@ Do not use system-centered phrasing such as:
 - The system reviewed
 - Company policy indicates
 
-Use BUSINESS CONTEXT as the source of truth for store procedures and issue-handling guidance.
+Use the BUSINESS CONTEXT as the source of truth for store procedures and issue-handling guidance.
 
-Output rules:
+Rules:
 - Keep the response concise, natural, and professional.
-- Do not use echoing phrases like "Understood" or "Got it."
-- Do not repeat the user's question.
+- Do not use echoing expressions like "Understood" or "Got it."
+- Do not repeat the user's wording unnecessarily.
 - Do not claim that the issue has already been resolved.
 - Provide procedural guidance only.
-- Ask at most one follow-up question when necessary.
-- Keep the informational content the same kind of content that would be provided in any other condition.
-
-Current issue category: {issue_label or "unknown"}.
+- Ask at most one follow-up question if necessary.
+- Keep tone, sentence length, and fluency stable.
+- Current issue category: {issue_label or "unknown"}.
 """
 
     msgs = [{"role": "system", "content": system}]
@@ -329,7 +347,7 @@ def generate_answer(user_text: str, issue: Optional[str]) -> str:
         context = load_all_txt_as_fallback()
 
     if not context.strip():
-        return answer_fallback(user_text)
+        return answer_fallback()
 
     return answer_grounded(
         user_text=user_text,
@@ -341,7 +359,7 @@ def generate_answer(user_text: str, issue: Optional[str]) -> str:
 
 
 # -------------------------
-# Session state initialization
+# Session state
 # -------------------------
 defaults = {
     "chat_history": [],
@@ -364,16 +382,13 @@ for k, v in defaults.items():
 # Greeting
 # -------------------------
 if (not st.session_state.greeted_once) and (not st.session_state.chat_history):
-    greet_text = (
-        "Hi, I’m Skyler, Style Loom’s virtual assistant. "
-        "I’m here to help with order-related issues."
-    )
+    greet_text = "Hi, I’m Skyler, Style Loom’s virtual assistant. I’m here to help with order-related issues."
     st.session_state.chat_history.append((chatbot_speaker(), greet_text))
     st.session_state.greeted_once = True
 
 
 # -------------------------
-# UI: issue dropdown
+# Issue selectbox
 # -------------------------
 st.markdown("**How can I help you today?**")
 
@@ -402,7 +417,7 @@ for spk, msg in st.session_state.chat_history:
     if spk == chatbot_speaker():
         st.markdown(f"**{spk}:** {msg}")
     else:
-        st.markdown("**User:** " + msg)
+        st.markdown(f"**User:** {msg}")
 
 
 # -------------------------
@@ -414,7 +429,7 @@ if not st.session_state.ended:
 
 
 # -------------------------
-# End button and rating UI
+# End button and rating
 # -------------------------
 end_col1, end_col2 = st.columns([1, 2])
 
@@ -431,7 +446,7 @@ with end_col2:
         if remaining > 0:
             st.caption(
                 f"Please complete at least {MIN_USER_TURNS} user turns before ending the chat. "
-                f"Progress: {completed}/{MIN_USER_TURNS} (need {remaining} more)."
+                f"Progress: {completed}/{MIN_USER_TURNS}."
             )
         else:
             st.caption(f"Progress: {completed}/{MIN_USER_TURNS}. You can end the chat now.")
@@ -472,9 +487,6 @@ if st.session_state.ended and not st.session_state.rating_saved:
 
         transcript_text = "\n".join(transcript_lines)
 
-        # Keep Study 2-like schema as much as possible.
-        # relevance_condition column is reused here to store autonomy condition,
-        # unless you later add a dedicated autonomy_condition column in Supabase.
         session_payload = {
             "session_id": st.session_state.session_id,
             "ts_start": ts_now,
@@ -509,7 +521,6 @@ if user_text and not st.session_state.ended:
     )
 
     answer = generate_answer(user_text, issue=active_issue)
-
     st.session_state["pending_question"] = extract_last_question(answer)
 
     st.session_state.chat_history.append((chatbot_speaker(), answer))
