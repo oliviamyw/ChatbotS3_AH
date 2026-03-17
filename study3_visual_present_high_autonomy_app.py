@@ -124,6 +124,7 @@ ISSUES = [
     "Return or refund issue",
     "Payment issue",
     "Order cancellation",
+    "Other",
 ]
 
 ISSUE_TO_HINT = {
@@ -133,6 +134,7 @@ ISSUE_TO_HINT = {
     "Return or refund issue": "return refund process friction return request refund status",
     "Payment issue": "payment issue payment declined checkout error order not confirmed payment status",
     "Order cancellation": "order cancellation cancel order before shipment order status",
+    "Other": "other issue customer service support shopping help",
     "— Select an issue —": "",
 }
 
@@ -367,7 +369,7 @@ def generate_answer(user_text: str, issue: Optional[str]) -> str:
 # -------------------------
 defaults = {
     "chat_history": [],
-    "session_id": uuid.uuid4().hex[:10],
+    "session_id": str(uuid.uuid4()),
     "greeted_once": False,
     "ended": False,
     "rating_saved": False,
@@ -386,7 +388,7 @@ for k, v in defaults.items():
 # Greeting
 # -------------------------
 if (not st.session_state.greeted_once) and (not st.session_state.chat_history):
-    greet_text = "Hi, I’m Skyler, Style Loom’s virtual assistant. I’m here to help with order-related issues."
+    greet_text = "Hi, I’m Skyler, Style Loom’s virtual assistant. I’m here to help with your shopping."
     st.session_state.chat_history.append((chatbot_speaker(), greet_text))
     st.session_state.greeted_once = True
 
@@ -408,7 +410,7 @@ st.session_state.last_user_selected_issue = selected
 
 if selected != "— Select an issue —" and selected != prev_selected:
     st.session_state.active_issue = selected
-    confirm_text = f"I can help you with **{selected}**. Please ask me a question."
+    confirm_text = f"Sure, I will help you with **{selected}**. Please ask me a question."
     st.session_state.chat_history.append((chatbot_speaker(), confirm_text))
 
 st.divider()
