@@ -464,7 +464,7 @@ if st.session_state.ended and not st.session_state.rating_saved:
     prolific_id = st.text_input("Prolific ID", value="")
 
     if st.button("Submit rating and save"):
-        ts_now = datetime.utcnow()
+        ts_now = datetime.datetime.utcnow().isoformat()
 
         final_issue = st.session_state.active_issue or (
             selected if selected != "— Select an issue —" else "Other"
