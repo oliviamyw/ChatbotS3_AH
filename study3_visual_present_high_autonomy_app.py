@@ -410,7 +410,7 @@ st.session_state.last_user_selected_issue = selected
 
 if selected != "— Select an issue —" and selected != prev_selected:
     st.session_state.active_issue = selected
-    confirm_text = f"Sure, I will help you with **{selected}**. Please ask me a question."
+    confirm_text = f"Sure, I will help you with **{selected}**. Please tell me what happened."
     st.session_state.chat_history.append((chatbot_speaker(), confirm_text))
 
 st.divider()
