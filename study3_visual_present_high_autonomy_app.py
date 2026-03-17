@@ -506,14 +506,13 @@ if st.session_state.ended and not st.session_state.rating_saved:
             "transcript": transcript_text,
             "satisfaction": int(rating),
         }
-
-try:
-    supabase.table(TBL_SESSIONS).insert(session_payload).execute()
-    st.session_state.rating_saved = True
-    st.success("Saved. Thank you.")
-except Exception as e:
-    st.write(e)
-
+        
+        try:
+            supabase.table(TBL_SESSIONS).insert(session_payload).execute()
+            st.session_state.rating_saved = True
+            st.success("Saved. Thank you.")
+        except Exception as e:
+            st.write(e)
 
 # -------------------------
 # Main interaction
