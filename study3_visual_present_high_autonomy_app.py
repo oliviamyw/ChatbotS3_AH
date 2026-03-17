@@ -507,7 +507,7 @@ if st.session_state.ended and not st.session_state.rating_saved:
             "satisfaction": int(rating),
         }
 
-        supabase.table(TBL_SESSIONS).upsert(session_payload).execute()
+        supabase.table(TBL_SESSIONS).insert(session_payload).execute()
 
         st.session_state.rating_saved = True
         st.success("Saved. Thank you.")
